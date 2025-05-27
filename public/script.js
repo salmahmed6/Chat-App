@@ -126,6 +126,7 @@ class ChatApp {
       title.textContent = this.isSignup ? 'Create Account' : 'Welcome Back';
       switchButton.textContent = this.isSignup ? 'Switch to Login' : 'Switch to Signup';
       usernameField.style.display = this.isSignup ? 'block' : 'none';
+      if (!this.isSignup) usernameField.value = '';
       submitButton.textContent = this.isSignup ? 'Sign Up' : 'Sign In';
       
       this.clearError();
