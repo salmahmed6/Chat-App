@@ -16,6 +16,7 @@ const generateRefreshToken = (userId) => {
 // Signup controller
 const signup = async (req, res) => {
   try {
+    console.log('Signup request body:', req.body); // Debug log
     const { username, email, password } = req.body;
     if (!email || !password || !username) {
       return res.status(400).json({ message: 'Username, email, and password are required' });
