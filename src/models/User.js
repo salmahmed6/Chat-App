@@ -34,6 +34,9 @@ const userSchema = new mongoose.Schema({
 
 // Hash password before saving
 userSchema.pre('save', async function (next) {
+  if (this.isModified('email') && this.email) {
+    this.email = this.email.toLowerCase();
+  }
   if (this.isModified('password') && this.password) {
     this.password = await bcrypt.hash(this.password, 10);
   }
