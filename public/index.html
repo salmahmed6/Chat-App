@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="auth">
+    <h2>Login</h2>
+    <div id="error-message"></div>
+    <form id="login-form">
+      <input type="text" id="username" placeholder="Username" required>
+      <input type="email" id="email" placeholder="Email" required>
+      <input type="password" id="password" placeholder="Password" required>
+      <button type="submit">Login</button>
+      <button type="button" id="switch-to-signup">Switch to Signup</button>
+    </form>
+    <a href="/api/auth/google"><button>Login with Google</button></a>
+  </div>
+  <div id="chat" style="display: none;">
+    <h2>Chat</h2>
+    <p id="typing-indicator"></p>
+    <ul id="messages"></ul>
+    <form id="message-form">
+      <input id="message-input" autocomplete="off" placeholder="Type a message..." required>
+      <button>Send</button>
+    </form>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const loginForm = document.getElementById('login-form');
+    const messageForm = document.getElementById('message-form');
+    const messageInput = document.getElementById('message-input');
+    const messages = document.getElementById('messages');
+    const authDiv = document.getElementById('auth');
+    const chatDiv = document.getElementById('chat');
+    const typingIndicator = document.getElementById('typing-indicator');
+    const switchToSignup = document.getElementById('switch-to-signup');
+    const errorMessage = document.getElementById('error-message');
+    let accessToken = null;
+    let user = null;
+
+    // Handle URL parameters for Google auth and verification
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('error') === 'verify-email') {
+      errorMessage.textContent = 'Please verify your email to continue.';
+    } else if (urlParams.get('verified') === 'true') {
+      errorMessage.textContent = 'Email verified successfully! Please log in.';
+    } else if (urlParams.get('accessToken')) {
+      accessToken = urlParams.get('accessToken');
+      user = {
+        id: urlParams.get('userId'),
+        username: urlParams.get('username'),
+        email: urlParams.get('email'),
+        isVerified: urlParams.get('isVerified') === 'true',
+      };
+      if (!user.isVerified) {
+        errorMessage.textContent = 'Please verify your email to fully activate your account.';
+      }
+      authDiv.style.display = 'none';
+      chatDiv.style.display = 'block';
+      socket.emit('join room', 'general');
+      loadMessages();
+      window.history.replaceState({}, document.title, '/');
+    }
+
+    // Toggle between login and signup
+    let isSignup = false;
+    switchToSignup.addEventListener('click', () => {
+      isSignup = !isSignup;
+      document.querySelector('#auth h2').textContent = isSignup ? 'Signup' : 'Login';
+      switchToSignup.textContent = isSignup ? 'Switch to Login' : 'Switch to Signup';
+      document.getElementById('username').style.display = isSignup ? 'block' : 'none';
+    });
+
+    // Handle login/signup
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const endpoint = isSignup ? '/api/auth/signup' : '/api/auth/login';
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(isSignup ? { username, email, password } : { email, password }),
+        });
+        const data = await response.json();
+        if (response.ok) {
+          accessToken = data.accessToken;
+          user = data.user;
+          if (!user.isVerified) {
+            errorMessage.textContent = 'Please verify your email to fully activate your account.';
+          }
+          authDiv.style.display = 'none';
+          chatDiv.style.display = 'block';
+          socket.emit('join room', 'general');
+          loadMessages();
+        } else {
+          errorMessage.textContent = data.message;
+        }
+      } catch (error) {
+        errorMessage.textContent = 'Error: ' + error.message;
+      }
+    });
+
+    // Refresh token
+    async function refreshAccessToken() {
+      try {
+        const response = await fetch('/api/auth/refresh-token', { method: 'POST', credentials: 'include' });
+        const data = await response.json();
+        if (response.ok) {
+          accessToken = data.accessToken;
+          user = data.user;
+          return true;
+        } else {
+          authDiv.style.display = 'block';
+          chatDiv.style.display = 'none';
+          errorMessage.textContent = 'Session expired. Please log in again.';
+          return false;
+        }
+      } catch (error) {
+        errorMessage.textContent = 'Error refreshing token';
+        return false;
+      }
+    }
+
+    // Load message history
+    async function loadMessages() {
+      try {
+        const response = await fetch('/api/messages', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (response.status === 401) {
+          if (await refreshAccessToken()) {
+            return loadMessages(); // Retry with new token
+          }
+          return;
+        }
+        const messagesData = await response.json();
+        messagesData.forEach(msg => {
+          const item = document.createElement('li');
+          item.textContent = `${msg.sender.username}: ${msg.content}`;
+          messages.appendChild(item);
+        });
+        window.scrollTo(0, document.body.scrollHeight);
+      } catch (error) {
+        errorMessage.textContent = 'Error loading messages';
+      }
+    }
+
+    // Send message
+    messageForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (messageInput.value) {
+        socket.emit('chat message', {
+          content: messageInput.value,
+          room: 'general',
+          userId: user.id,
+        });
+        messageInput.value = '';
+      }
+    });
+
+    // Typing indicator
+    messageInput.addEventListener('input', () => {
+      socket.emit('typing', { room: 'general', username: user.username });
+    });
+
+    // Receive messages
+    socket.on('chat message', (msg) => {
+      const item = document.createElement('li');
+      item.textContent = `${msg.sender}: ${msg.content}`;
+      messages.appendChild(item);
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+
+    // Receive typing indicator
+    socket.on('typing', ({ username }) => {
+      typingIndicator.textContent = `${username} is typing...`;
+      setTimeout(() => { typingIndicator.textContent = ''; }, 3000);
+    });
+  </script>
+</body>
+</html>
