@@ -1,4 +1,4 @@
-// Chat App JavaScript
+// Chat App JavaScript - Complete Implementation
 class ChatApp {
     constructor() {
       this.socket = io();
@@ -6,56 +6,7 @@ class ChatApp {
       this.accessToken = null;
       this.activeChat = null;
       this.isSignup = false;
-      this.chats = [
-        {
-          id: '1',
-          name: 'Team Standup',
-          type: 'group',
-          lastMessage: 'Great work everyone!',
-          timestamp: '2 min ago',
-          unread: 3,
-          avatar: '👥',
-          participants: ['John', 'Jane', 'Mike', 'Sarah']
-        },
-        {
-          id: '2',
-          name: 'Design Team',
-          type: 'group',
-          lastMessage: 'New mockups are ready',
-          timestamp: '5 min ago',
-          unread: 1,
-          avatar: '🎨',
-          participants: ['Alice', 'Bob', 'Carol']
-        },
-        {
-          id: '3',
-          name: 'John Doe',
-          type: 'direct',
-          lastMessage: 'See you tomorrow!',
-          timestamp: '1 hour ago',
-          unread: 0,
-          avatar: '👤'
-        },
-        {
-          id: '4',
-          name: 'Jane Smith',
-          type: 'direct',
-          lastMessage: 'Thanks for the help',
-          timestamp: '3 hours ago',
-          unread: 2,
-          avatar: '👩'
-        },
-        {
-          id: '5',
-          name: 'Project Alpha',
-          type: 'group',
-          lastMessage: 'Deadline moved to Friday',
-          timestamp: '1 day ago',
-          unread: 0,
-          avatar: '🚀',
-          participants: ['Team Lead', 'Developer 1', 'Developer 2']
-        }
-      ];
+      this.chats = [];
       this.messages = {};
       this.currentReactionMessage = null;
       
@@ -65,7 +16,6 @@ class ChatApp {
     init() {
       this.setupEventListeners();
       this.handleURLParams();
-      this.renderChats();
     }
   
     setupEventListeners() {
@@ -92,6 +42,7 @@ class ChatApp {
       // Socket events
       this.socket.on('chat message', (msg) => this.receiveMessage(msg));
       this.socket.on('typing', ({ username }) => this.showTyping(username));
+      this.socket.on('reaction updated', (data) => this.updateMessageReaction(data));
   
       // Message input typing
       let typingTimer;
@@ -108,7 +59,6 @@ class ChatApp {
   
     handleURLParams() {
       const urlParams = new URLSearchParams(window.location.search);
-      const errorMessage = document.getElementById('error-message');
       
       if (urlParams.get('error') === 'verify-email') {
         this.showError('Please verify your email to continue.');
@@ -206,7 +156,7 @@ class ChatApp {
       errorDiv.style.display = 'none';
     }
   
-    showChatInterface() {
+    async showChatInterface() {
       document.getElementById('auth').style.display = 'none';
       document.getElementById('chat').style.display = 'flex';
       
@@ -215,8 +165,92 @@ class ChatApp {
       document.getElementById('user-email').textContent = this.user.email;
       document.getElementById('user-avatar').textContent = this.user.username.charAt(0).toUpperCase();
       
+      // Load chats from server
+      await this.loadChats();
+      
       this.socket.emit('join room', 'general');
-      this.loadSampleMessages();
+    }
+  
+    async loadChats() {
+      try {
+        const response = await fetch('/api/chats', {
+          headers: { 'Authorization': `Bearer ${this.accessToken}` }
+        });
+        
+        if (response.ok) {
+          this.chats = await response.json();
+        } else {
+          // Fallback to sample data
+          this.chats = [
+            {
+              id: '1',
+              name: 'Team Standup',
+              type: 'group',
+              lastMessage: 'Great work everyone!',
+              timestamp: '2 min ago',
+              unread: 3,
+              avatar: '👥',
+              participants: ['John', 'Jane', 'Mike', 'Sarah']
+            },
+            {
+              id: '2',
+              name: 'Design Team',
+              type: 'group',
+              lastMessage: 'New mockups are ready',
+              timestamp: '5 min ago',
+              unread: 1,
+              avatar: '🎨',
+              participants: ['Alice', 'Bob', 'Carol']
+            },
+            {
+              id: '3',
+              name: 'John Doe',
+              type: 'direct',
+              lastMessage: 'See you tomorrow!',
+              timestamp: '1 hour ago',
+              unread: 0,
+              avatar: '👤'
+            },
+            {
+              id: '4',
+              name: 'Jane Smith',
+              type: 'direct',
+              lastMessage: 'Thanks for the help',
+              timestamp: '3 hours ago',
+              unread: 2,
+              avatar: '👩'
+            },
+            {
+              id: '5',
+              name: 'Project Alpha',
+              type: 'group',
+              lastMessage: 'Deadline moved to Friday',
+              timestamp: '1 day ago',
+              unread: 0,
+              avatar: '🚀',
+              participants: ['Team Lead', 'Developer 1', 'Developer 2']
+            }
+          ];
+        }
+        
+        this.renderChats();
+      } catch (error) {
+        console.error('Error loading chats:', error);
+        // Use fallback data
+        this.chats = [
+          {
+            id: '1',
+            name: 'General',
+            type: 'group',
+            lastMessage: 'Welcome to the chat!',
+            timestamp: 'now',
+            unread: 0,
+            avatar: '💬',
+            participants: ['Everyone']
+          }
+        ];
+        this.renderChats();
+      }
     }
   
     renderChats() {
@@ -265,17 +299,23 @@ class ChatApp {
       document.querySelectorAll('.chat-item').forEach(item => {
         item.classList.remove('active');
       });
-      document.querySelector(`[data-chat-id="${chatId}"]`).classList.add('active');
+      const selectedItem = document.querySelector(`[data-chat-id="${chatId}"]`);
+      if (selectedItem) {
+        selectedItem.classList.add('active');
+      }
       
       // Update chat header
       document.getElementById('chat-avatar').textContent = chat.avatar;
       document.getElementById('chat-name').textContent = chat.name;
       document.getElementById('chat-members').textContent = 
-        chat.type === 'group' ? `${chat.participants.length} members` : '';
+        chat.type === 'group' && chat.participants ? `${chat.participants.length} members` : '';
       
       // Show active chat, hide welcome screen
       document.getElementById('welcome-screen').style.display = 'none';
       document.getElementById('active-chat').style.display = 'flex';
+      
+      // Join the room
+      this.socket.emit('join room', chatId);
       
       // Load messages for this chat
       this.loadChatMessages(chatId);
@@ -284,33 +324,50 @@ class ChatApp {
       this.closeSidebar();
     }
   
-    loadChatMessages(chatId) {
-      // Sample messages for different chats
-      const sampleMessages = {
-        '1': [
-          { id: '1', sender: 'John', content: 'Good morning team! Ready for today\'s standup?', timestamp: '9:00 AM', reactions: { '👍': ['Jane', 'Mike'], '❤️': ['Sarah'] } },
-          { id: '2', sender: 'Jane', content: 'Yes! I finished the user authentication feature yesterday.', timestamp: '9:02 AM', reactions: { '🎉': ['John', 'Mike'] } },
-          { id: '3', sender: 'Mike', content: 'Great work everyone! The new design looks amazing.', timestamp: '9:05 AM', reactions: {} }
-        ],
-        '2': [
-          { id: '4', sender: 'Alice', content: 'I\'ve uploaded the new mockups to Figma', timestamp: '10:30 AM', reactions: { '👍': ['Bob'] } },
-          { id: '5', sender: 'Bob', content: 'The color scheme looks perfect!', timestamp: '10:32 AM', reactions: { '❤️': ['Alice', 'Carol'] } }
-        ],
-        '3': [
-          { id: '6', sender: 'John Doe', content: 'Hey! How are you doing?', timestamp: '2:00 PM', reactions: {} },
-          { id: '7', sender: 'You', content: 'I\'m doing great! Thanks for asking.', timestamp: '2:02 PM', reactions: { '😊': ['John Doe'] } }
-        ]
-      };
-      
-      this.messages[chatId] = sampleMessages[chatId] || [];
-      this.renderMessages();
-    }
-  
-    loadSampleMessages() {
-      // Load sample messages for all chats
-      this.chats.forEach(chat => {
-        this.loadChatMessages(chat.id);
-      });
+    async loadChatMessages(chatId) {
+      try {
+        const response = await fetch(`/api/messages?room=${chatId}`, {
+          headers: { 'Authorization': `Bearer ${this.accessToken}` }
+        });
+        
+        if (response.ok) {
+          const messages = await response.json();
+          this.messages[chatId] = messages.map(msg => ({
+            id: msg._id,
+            sender: msg.sender.username,
+            content: msg.content,
+            timestamp: new Date(msg.timestamp).toLocaleTimeString([], { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            }),
+            reactions: Object.fromEntries(msg.reactions || new Map())
+          }));
+        } else {
+          // Fallback to sample messages
+          const sampleMessages = {
+            '1': [
+              { id: '1', sender: 'John', content: 'Good morning team! Ready for today\'s standup?', timestamp: '9:00 AM', reactions: { '👍': ['Jane', 'Mike'], '❤️': ['Sarah'] } },
+              { id: '2', sender: 'Jane', content: 'Yes! I finished the user authentication feature yesterday.', timestamp: '9:02 AM', reactions: { '🎉': ['John', 'Mike'] } },
+              { id: '3', sender: 'Mike', content: 'Great work everyone! The new design looks amazing.', timestamp: '9:05 AM', reactions: {} }
+            ],
+            '2': [
+              { id: '4', sender: 'Alice', content: 'I\'ve uploaded the new mockups to Figma', timestamp: '10:30 AM', reactions: { '👍': ['Bob'] } },
+              { id: '5', sender: 'Bob', content: 'The color scheme looks perfect!', timestamp: '10:32 AM', reactions: { '❤️': ['Alice', 'Carol'] } }
+            ],
+            '3': [
+              { id: '6', sender: 'John Doe', content: 'Hey! How are you doing?', timestamp: '2:00 PM', reactions: {} },
+              { id: '7', sender: 'You', content: 'I\'m doing great! Thanks for asking.', timestamp: '2:02 PM', reactions: { '😊': ['John Doe'] } }
+            ]
+          };
+          this.messages[chatId] = sampleMessages[chatId] || [];
+        }
+        
+        this.renderMessages();
+      } catch (error) {
+        console.error('Error loading messages:', error);
+        this.messages[chatId] = [];
+        this.renderMessages();
+      }
     }
   
     renderMessages() {
@@ -348,7 +405,7 @@ class ChatApp {
       
       const reactionsHtml = Object.entries(reactions).map(([emoji, users]) => 
         `<button class="reaction-button ${users.includes(this.user?.username || 'You') ? 'active' : ''}" 
-                 data-emoji="${emoji}">
+                 data-emoji="${emoji}" data-message-id="${this.currentReactionMessage}">
            ${emoji} ${users.length}
          </button>`
       ).join('');
@@ -362,6 +419,23 @@ class ChatApp {
           e.stopPropagation();
           const messageId = button.dataset.messageId;
           this.showReactionPicker(messageId, button);
+        });
+      });
+  
+      // Handle clicking on existing reactions
+      document.querySelectorAll('.reaction-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const emoji = button.dataset.emoji;
+          const messageId = button.dataset.messageId;
+          if (emoji && messageId) {
+            this.socket.emit('message reaction', {
+              messageId,
+              emoji,
+              userId: this.user.id,
+              room: this.activeChat
+            });
+          }
         });
       });
     }
@@ -381,29 +455,27 @@ class ChatApp {
         const emoji = e.target.dataset.emoji;
         const messageId = this.currentReactionMessage;
         
-        // Find the message and update reactions
-        const chatMessages = this.messages[this.activeChat];
-        const message = chatMessages.find(m => m.id === messageId);
-        
-        if (message) {
-          if (!message.reactions[emoji]) {
-            message.reactions[emoji] = [];
-          }
-          
-          const userIndex = message.reactions[emoji].indexOf(this.user?.username || 'You');
-          if (userIndex > -1) {
-            message.reactions[emoji].splice(userIndex, 1);
-            if (message.reactions[emoji].length === 0) {
-              delete message.reactions[emoji];
-            }
-          } else {
-            message.reactions[emoji].push(this.user?.username || 'You');
-          }
-          
-          this.renderMessages();
-        }
+        // Emit reaction to server
+        this.socket.emit('message reaction', {
+          messageId,
+          emoji,
+          userId: this.user.id,
+          room: this.activeChat
+        });
         
         this.hideReactionPicker();
+      }
+    }
+  
+    updateMessageReaction(data) {
+      const { messageId, reactions } = data;
+      
+      if (this.messages[this.activeChat]) {
+        const message = this.messages[this.activeChat].find(m => m.id === messageId);
+        if (message) {
+          message.reactions = reactions;
+          this.renderMessages();
+        }
       }
     }
   
@@ -425,26 +497,11 @@ class ChatApp {
       const content = input.value.trim();
       
       if (content && this.activeChat) {
-        const newMessage = {
-          id: Date.now().toString(),
-          sender: this.user?.username || 'You',
-          content: content,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          reactions: {}
-        };
-        
-        if (!this.messages[this.activeChat]) {
-          this.messages[this.activeChat] = [];
-        }
-        
-        this.messages[this.activeChat].push(newMessage);
-        this.renderMessages();
-        
-        // Emit to socket
+        // Emit to socket - the server will handle saving and broadcasting
         this.socket.emit('chat message', {
           content: content,
           room: this.activeChat,
-          userId: this.user?.id
+          userId: this.user.id
         });
         
         input.value = '';
@@ -453,15 +510,7 @@ class ChatApp {
   
     receiveMessage(msg) {
       if (this.activeChat && this.messages[this.activeChat]) {
-        const newMessage = {
-          id: Date.now().toString(),
-          sender: msg.sender,
-          content: msg.content,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          reactions: {}
-        };
-        
-        this.messages[this.activeChat].push(newMessage);
+        this.messages[this.activeChat].push(msg);
         this.renderMessages();
       }
     }
@@ -506,6 +555,61 @@ class ChatApp {
     scrollToBottom() {
       const container = document.getElementById('messages-container');
       container.scrollTop = container.scrollHeight;
+    }
+  
+    // Refresh token functionality
+    async refreshAccessToken() {
+      try {
+        const response = await fetch('/api/auth/refresh-token', { 
+          method: 'POST', 
+          credentials: 'include' 
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          this.accessToken = data.accessToken;
+          this.user = data.user;
+          return true;
+        } else {
+          this.showAuthInterface();
+          this.showError('Session expired. Please log in again.');
+          return false;
+        }
+      } catch (error) {
+        this.showError('Error refreshing token');
+        return false;
+      }
+    }
+  
+    showAuthInterface() {
+      document.getElementById('auth').style.display = 'flex';
+      document.getElementById('chat').style.display = 'none';
+    }
+  
+    // Handle API errors with token refresh
+    async makeAuthenticatedRequest(url, options = {}) {
+      const defaultOptions = {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        ...options
+      };
+  
+      let response = await fetch(url, defaultOptions);
+  
+      if (response.status === 401) {
+        // Try to refresh token
+        if (await this.refreshAccessToken()) {
+          // Retry with new token
+          defaultOptions.headers['Authorization'] = `Bearer ${this.accessToken}`;
+          response = await fetch(url, defaultOptions);
+        }
+      }
+  
+      return response;
     }
   }
   
