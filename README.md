@@ -45,8 +45,8 @@ A real-time chat application built with **Node.js**, **Express**, **Socket.IO**,
 - **Authentication:** JSON Web Tokens (JWT), bcrypt, Passport.js (Google OAuth)
 - **Email:** Nodemailer for sending verification emails
 - **Frontend:** HTML, CSS, JavaScript
-- **Caching:** Redis (optional for presence tracking)
-- **Deployment:** Heroku, AWS, or Vercel (optional)
+- **Caching:** Redis 
+- **Deployment:** Vercel 
 
 ---
 
@@ -88,7 +88,7 @@ chat-app/
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/chat-app.git
+git clone https://github.com/salmahmed6/chat-app.git
 cd chat-app
 ```
 
@@ -189,7 +189,3 @@ Contributions are welcome! To contribute:
 
 Please ensure your code follows the project's style guidelines and includes tests (using Jest or Mocha).
 
----
-
-## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
